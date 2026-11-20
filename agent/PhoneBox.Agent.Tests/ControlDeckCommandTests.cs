@@ -91,8 +91,8 @@ public sealed class ControlDeckCommandTests
             new("other","OpenCode",12,"speaker",80,false,.1f),
         ];
         var json=System.Text.Json.JsonSerializer.Serialize(await f.Deck.Snapshot(default));
-        Assert.Equal(1,System.Text.RegularExpressions.Regex.Matches(json,"application:Chrome",System.Text.RegularExpressions.RegexOptions.IgnoreCase).Count);
-        Assert.Contains("\"peak\":0.8",json);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(json,"application:Chrome",System.Text.RegularExpressions.RegexOptions.IgnoreCase).Cast<System.Text.RegularExpressions.Match>());
+        Assert.Contains("\"Peak\":0.8",json);
     }
     [Fact]
     public async Task GroupedSessionIdFromAnExistingPhoneUpdatesEveryCopy()
