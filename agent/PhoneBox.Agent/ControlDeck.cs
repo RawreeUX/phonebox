@@ -80,20 +80,31 @@ public sealed partial class ControlDeck : BackgroundService
         if (!audio.Available || audio.Sessions.Count == 0) return audio;
         var defaultOutput = audio.Defaults?.GetValueOrDefault("output:1");
         var sessions = audio.Sessions
-            .GroupBy(s => s.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Where(s => s.Active || s.Pid == 0)
+            .GroupBy(ApplicationKey, StringComparer.Ordinal)
             .Select(group =>
             {
                 var representative = group.FirstOrDefault(s => s.DeviceId == defaultOutput) ?? group.First();
                 return representative with
                 {
                     Id = "application:" + group.Key,
-                    Name = group.Key,
                     Peak = group.Max(s => s.Peak),
                 };
             })
             .ToArray();
         return audio with { Sessions = sessions };
     }
+    private static string ApplicationKey(DeckSession session)
+    {
+        var name = session.Name.Trim();
+        if (name.Length == 0 || name.Equals("Application", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(session.ProcessName))
+            return "session:" + session.Id;
+        return name.ToLowerInvariant();
+    }
+    private static bool MatchesApplication(DeckSession session, string value) =>
+        ApplicationKey(session).Equals(value, StringComparison.OrdinalIgnoreCase)
+        || session.Name.Equals(value, StringComparison.OrdinalIgnoreCase)
+        || session.ProcessName?.Equals(value, StringComparison.OrdinalIgnoreCase) == true;
     private void Invalidate() { lock (_state) _audio = null; }
 
     private bool TryMute(string id)
@@ -154,7 +165,7 @@ public sealed partial class ControlDeck : BackgroundService
         return new DeckProfile { Id = "profile-" + Guid.NewGuid().ToString("N")[..12], Label = "Audio profile",
             Defaults = audio.Defaults?.ToDictionary(p => p.Key, p => p.Value) ?? [],
             Levels = audio.Devices.Where(d => d.CanControl).Select(d => new DeckLevel("device", d.Id, d.Volume, d.Muted))
-                .Concat(audio.Sessions.GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase).Select(g => new DeckLevel("application", g.Key, g.First().Volume, g.First().Muted))).ToList() };
+                .Concat(audio.Sessions.GroupBy(ApplicationKey, StringComparer.Ordinal).Select(g => new DeckLevel("application", g.Key, g.First().Volume, g.First().Muted))).ToList() };
     }
 
     public string TaskOutput(string id) => _tasks.Output(id);
@@ -190,7 +201,7 @@ public sealed partial class ControlDeck : BackgroundService
                     {
                         var applicationName = id["application:".Length..];
                         var sessions = Audio().Sessions
-                            .Where(s => s.Name.Equals(applicationName, StringComparison.OrdinalIgnoreCase)).ToArray();
+                            .Where(s => MatchesApplication(s, applicationName)).ToArray();
                         if (sessions.Length == 0) return new(false, "Application audio session ended");
                         ok = true;
                         foreach (var session in sessions)
@@ -302,7 +313,7 @@ public sealed partial class ControlDeck : BackgroundService
             {
                 if (level.Kind == "application")
                 {
-                    foreach (var session in before.Sessions.Where(s => string.Equals(s.Name, level.Id, StringComparison.OrdinalIgnoreCase)))
+                    foreach (var session in before.Sessions.Where(s => MatchesApplication(s, level.Id)))
                         if (!_native.Session(session.Id, level.Volume, level.Muted)) return new(false, "An application level could not be restored");
                     continue;
                 }
