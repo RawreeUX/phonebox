@@ -66,6 +66,48 @@ public sealed class ControlDeckCommandTests
         Assert.Empty(f.Native.Writes);
     }
     [Fact]
+    public async Task GroupedApplicationVolumeUpdatesEveryMatchingSessionAcrossOutputs()
+    {
+        using var f=new Fixture();
+        f.Native.Sessions=
+        [
+            new("chrome-speakers","Chrome",10,"speaker",100,false,0),
+            new("chrome-headset","chrome",11,"headset",32,true,0),
+            new("other","OpenCode",12,"speaker",80,false,0),
+        ];
+        Assert.True((await f.Act("session","application:CHROME",55)).Ok);
+        Assert.Equal(["session:chrome-speakers","session:chrome-headset"],f.Native.Writes);
+        Assert.All(f.Native.Sessions.Where(s=>s.Name.Equals("chrome",StringComparison.OrdinalIgnoreCase)),s=>Assert.Equal(55,s.Volume));
+        Assert.Equal(80,f.Native.Sessions.Single(s=>s.Name=="OpenCode").Volume);
+    }
+    [Fact]
+    public async Task SnapshotGroupsApplicationSessionsAcrossOutputs()
+    {
+        using var f=new Fixture();
+        f.Native.Sessions=
+        [
+            new("chrome-speakers","Chrome",10,"speaker",100,false,.2f),
+            new("chrome-headset","chrome",11,"headset",32,true,.8f),
+            new("other","OpenCode",12,"speaker",80,false,.1f),
+        ];
+        var json=System.Text.Json.JsonSerializer.Serialize(await f.Deck.Snapshot(default));
+        Assert.Equal(1,System.Text.RegularExpressions.Regex.Matches(json,"application:Chrome",System.Text.RegularExpressions.RegexOptions.IgnoreCase).Count);
+        Assert.Contains("\"peak\":0.8",json);
+    }
+    [Fact]
+    public async Task GroupedSessionIdFromAnExistingPhoneUpdatesEveryCopy()
+    {
+        using var f=new Fixture();
+        f.Native.Sessions=
+        [
+            new("system-speakers","System sounds",0,"speaker",100,false,0),
+            new("system-headset","System sounds",0,"headset",70,false,0),
+        ];
+        Assert.True((await f.Act("session","application:System sounds",40)).Ok);
+        Assert.Equal(["session:system-speakers","session:system-headset"],f.Native.Writes);
+        Assert.All(f.Native.Sessions,s=>Assert.Equal(40,s.Volume));
+    }
+    [Fact]
     public async Task PowerActionsCannotBypassOptInOrHoldNonce()
     {
         using var f=new Fixture("""{"allowPower":true}""");
