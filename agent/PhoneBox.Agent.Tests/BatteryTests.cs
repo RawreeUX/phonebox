@@ -3,6 +3,10 @@ using Xunit;
 
 public class BatteryTests
 {
+    [Fact]
+    public void ActiveBatteryRefreshBalancesResponsivenessAndReceiverWakeups()
+        => Assert.InRange(BatteryMonitor.ActiveRefreshIntervalMs, 15_000, 20_000);
+
     [Theory]
     [InlineData("WH-1000XM5", "headphones")]
     [InlineData("Galaxy Buds2 Pro", "headphones")]
