@@ -94,9 +94,9 @@ public sealed class ControlDeckCommandTests
         var json=System.Text.Json.JsonSerializer.Serialize(await f.Deck.Snapshot(default));
         using var document=System.Text.Json.JsonDocument.Parse(json);
         var sessions=document.RootElement.GetProperty("audio").GetProperty("Sessions");
-        Assert.True(sessions.EnumerateArray().Count(s=>s.GetProperty("Id").GetString()=="application:chrome")==1,json);
-        Assert.Equal(.8,sessions.EnumerateArray().Single(s=>s.GetProperty("Id").GetString()=="application:chrome").GetProperty("Peak").GetDouble(),.001);
-        Assert.Equal(100,sessions.EnumerateArray().Single(s=>s.GetProperty("Id").GetString()=="application:chrome").GetProperty("Volume").GetInt32());
+        var chrome=Assert.Single(sessions.EnumerateArray(),s=>s.GetProperty("Id").GetString()=="application:chrome");
+        Assert.Equal(.8,chrome.GetProperty("Peak").GetDouble(),.001);
+        Assert.Equal(100,chrome.GetProperty("Volume").GetInt32());
     }
     [Fact]
     public async Task SnapshotHidesInactiveSessionsButGroupedWritesStillReachThem()
@@ -124,7 +124,7 @@ public sealed class ControlDeckCommandTests
         ];
         var json=System.Text.Json.JsonSerializer.Serialize(await f.Deck.Snapshot(default));
         using var document=System.Text.Json.JsonDocument.Parse(json);
-        Assert.True(document.RootElement.GetProperty("audio").GetProperty("Sessions").GetArrayLength()==2,json);
+        Assert.Equal(2,document.RootElement.GetProperty("audio").GetProperty("Sessions").GetArrayLength());
     }
     [Fact]
     public async Task GroupedSessionIdFromAnExistingPhoneUpdatesEveryCopy()
