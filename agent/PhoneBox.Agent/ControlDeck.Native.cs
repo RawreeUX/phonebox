@@ -4,6 +4,7 @@ using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
 using NAudio.Midi;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Windows.Media;
@@ -15,6 +16,7 @@ namespace PhoneBox.Agent;
 
 internal sealed partial class WindowsDeckNative(MediaMonitor? mediaMonitor = null, ILogger? log = null) : IDeckNative
 {
+    private static readonly ConcurrentDictionary<(int Pid, long Started), (string Raw, string Friendly)> ProcessNames = new();
     private readonly Lock _gate = new();
     private readonly Dictionary<string, (WasapiPlayer Output, WaveStream Reader, MMDevice Device)> _sounds = [];
     private readonly Dictionary<string, IDisposable> _hls = [];
@@ -61,11 +63,13 @@ internal sealed partial class WindowsDeckNative(MediaMonitor? mediaMonitor = nul
                                 try
                                 {
                                     var pid = (int)s.GetProcessID;
-                                    if (pid != 0 && s.State != AudioSessionState.AudioSessionStateActive) continue;
-                                    var name = pid == 0 ? "System sounds" : string.IsNullOrWhiteSpace(s.DisplayName) || s.DisplayName.StartsWith('@') ? ProcessName(pid) : s.DisplayName;
+                                    if (s.State == AudioSessionState.AudioSessionStateExpired) continue;
+                                    var names = ProcessName(pid);
+                                    var name = pid == 0 ? "System sounds" : string.IsNullOrWhiteSpace(s.DisplayName) || s.DisplayName.StartsWith('@') ? names.Friendly : s.DisplayName;
                                     sessions.Add(new(s.GetSessionInstanceIdentifier, name, pid, d.ID,
                                         (int)Math.Round(s.SimpleAudioVolume.Volume * 100), s.SimpleAudioVolume.Mute,
-                                        s.AudioMeterInformation.MasterPeakValue));
+                                        s.AudioMeterInformation.MasterPeakValue, names.Raw,
+                                        s.State == AudioSessionState.AudioSessionStateActive));
                                 }
                                 catch (COMException) { /* A session can end during enumeration; keep the other sessions. */ }
                             }
@@ -79,33 +83,42 @@ internal sealed partial class WindowsDeckNative(MediaMonitor? mediaMonitor = nul
         }
     }
 
-    private static string ProcessName(int pid)
+    private static (string Raw, string Friendly) ProcessName(int pid)
     {
-        if (pid == 0) return "System sounds";
+        if (pid == 0) return ("System sounds", "System sounds");
         try
         {
             using var p = Process.GetProcessById(pid);
             var processName = p.ProcessName;
+            var key = (pid, p.StartTime.ToUniversalTime().Ticks);
+            if (ProcessNames.TryGetValue(key, out var cached)) return cached;
 
             // Packaged desktop apps often expose a helper executable to Core Audio (for example DCv2.exe),
             // while Windows' own mixer shows the package's friendly display name (for example MSI Center).
             var packageName = PackageDisplayName(p);
-            if (UsefulName(packageName, processName)) return packageName!;
+            if (UsefulName(packageName, processName)) return Cache(key, processName, packageName!);
 
             try
             {
-                var file = p.MainModule?.FileName;
-                if (!string.IsNullOrWhiteSpace(file))
+                var path = new char[32768];
+                uint length = (uint)path.Length;
+                if (QueryFullProcessImageName(p.Handle, 0, path, ref length) && length > 0)
                 {
-                    var version = FileVersionInfo.GetVersionInfo(file);
-                    if (UsefulName(version.ProductName, processName)) return version.ProductName!;
-                    if (UsefulName(version.FileDescription, processName)) return version.FileDescription!;
+                    var version = FileVersionInfo.GetVersionInfo(new string(path, 0, (int)length));
+                    if (UsefulName(version.FileDescription, processName)) return Cache(key, processName, version.FileDescription!);
+                    if (UsefulName(version.ProductName, processName)) return Cache(key, processName, version.ProductName!);
                 }
             }
             catch { /* Protected processes may not expose their executable metadata. */ }
-            return processName;
+            return Cache(key, processName, processName);
         }
-        catch { return "Application"; }
+        catch { return ("", "Application"); }
+    }
+
+    private static (string Raw, string Friendly) Cache((int Pid, long Started) key, string raw, string friendly)
+    {
+        if (ProcessNames.Count > 1024) ProcessNames.Clear();
+        return ProcessNames.GetOrAdd(key, (raw, friendly));
     }
 
     private static bool UsefulName(string? value, string processName)
@@ -135,6 +148,9 @@ internal sealed partial class WindowsDeckNative(MediaMonitor? mediaMonitor = nul
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetPackageFullName(IntPtr process, ref uint packageFullNameLength,
         [Out] char[]? packageFullName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool QueryFullProcessImageName(IntPtr process, int flags, [Out] char[] fileName, ref uint size);
     public bool Device(string id, int? volume, bool? muted, int? channel = null)
     {
         lock (_gate)
