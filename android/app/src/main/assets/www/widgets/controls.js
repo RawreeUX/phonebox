@@ -112,7 +112,15 @@ function audioView(box, options, mode) {
 }
 
 function chooser(box, options, which) {
-  const list = h('div', 'deck-list'); box.append(list);
+  const layout = ['horizontal', 'grid', 'vertical'].includes(options.layout) ? options.layout : 'vertical';
+  const list = h('div', `deck-list deck-chooser deck-chooser-${layout}`); box.append(list);
+  const labels = new Map();
+  for (const line of String(options.labels || '').split(/\r?\n/)) {
+    const separator = line.indexOf('=');
+    if (separator < 0) continue;
+    const name = line.slice(0, separator).trim(), label = line.slice(separator + 1).trim();
+    if (name && label) labels.set(name, label);
+  }
   let signature = '';
   return data => {
     const items = which === 'media' ? data.media || [] : which === 'plans' ? data.powerPlans || [] : (data.audio?.devices || []).filter(d => d.direction === which);
@@ -120,14 +128,15 @@ function chooser(box, options, which) {
     const roleIndex = {console:0,media:1,communications:2}[role];
     const chosen = which === 'media' ? selectedPlayer(data, options)?.id : roleIndex != null && ['input','output'].includes(which)
       ? data.audio?.defaults?.[which+':'+roleIndex] : items.find(d => d.default || d.state === 'Active')?.id;
-    const key = JSON.stringify([items.map(i => [i.id, i.name]), chosen]); if (key === signature) return; signature = key;
+    const key = JSON.stringify([items.map(i => [i.id, i.name]), chosen, layout, [...labels]]); if (key === signature) return; signature = key;
     if (!items.length) { empty(list, which === 'media' ? 'Start a media player on the computer' : 'No compatible devices found'); return; }
     list.replaceChildren(...items.map(item => {
-      const b = button(item.name, async () => {
+      const b = button(labels.get(item.name) || item.name, async () => {
         if (which === 'media') store.set('control-player', item.id);
         else await deckCommand(which === 'plans' ? 'power-plan' : 'default', { id: item.id, op:role });
         signature = '';
-      });
+      }, item.name);
+      b.title = item.name;
       b.classList.toggle('selected', item.id === chosen); b.setAttribute('aria-pressed', String(item.id === chosen)); return b;
     }));
   };
