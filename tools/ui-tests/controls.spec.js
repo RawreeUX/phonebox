@@ -19,8 +19,10 @@ test('application mixer changes only the chosen session and reports its actual s
   await spotify.focus(); await spotify.press('ArrowLeft');
   await expect(spotify).toHaveValue('64'); await expect(browser).toHaveValue('30');
   await expect.poll(() => page.evaluate(async () => (await (await fetch('/agent/api/controls/state')).json()).audio.sessions.find(s => s.id === 'spotify').volume)).toBe(64);
-  await page.getByRole('button', { name: 'Mute Spotify', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Mute Spotify', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const mute = page.getByRole('button', { name: 'Mute Spotify', exact: true });
+  await expect(mute.locator('svg')).toHaveCount(1);
+  await mute.click();
+  await expect(page.getByRole('button', { name: 'Unmute Spotify', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('output selection follows the authoritative default device', async ({ page }) => {
