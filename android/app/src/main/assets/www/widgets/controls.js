@@ -86,7 +86,8 @@ function audioView(box, options, mode) {
         const signal = meter(item.peak);
         const kind = mode === 'app' || mode === 'apps' ? 'session' : 'device';
         const controls = slider(item.name + ' volume', value => deckCommand(kind, { id: item.id, value }));
-        const mute = button('Mute', () => deckCommand(kind, { id: item.id, muted: !row.item.muted }), 'Mute ' + item.name);
+        const mute = button('', () => deckCommand(kind, { id: item.id, muted: !row.item.muted }), 'Mute ' + item.name);
+        mute.classList.add('deck-mute');
         const balance = [];
         el.append(name, signal);
         if (mode === 'balance') {
@@ -99,7 +100,11 @@ function audioView(box, options, mode) {
         row = { el, name, signal, controls, mute, item, balance }; rows.set(item.id, row);
       }
       row.item = item; row.name.textContent = item.name;
-      row.controls.set(item.volume); row.mute.textContent = item.muted ? t('w.unmute') : t('w.mute');
+      row.controls.set(item.volume);
+      const muteAction = item.muted ? t('w.unmute') : t('w.mute');
+      row.mute.replaceChildren(icon(item.muted ? 'volume-x' : 'volume-2'));
+      row.mute.title = muteAction;
+      row.mute.setAttribute('aria-label', muteAction + ' ' + item.name);
       row.controls.input.disabled = item.canControl === false; row.mute.disabled = item.canControl === false;
       row.balance.forEach((slider, channel) => { const value = item.channelVolumes?.[channel]; slider.input.disabled = value == null; slider.set(value || 0); if (value == null) slider.number.textContent = 'n/a'; });
       row.mute.setAttribute('aria-pressed', String(item.muted));
