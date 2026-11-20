@@ -116,7 +116,8 @@ function chooser(box, options, which) {
   const list = h('div', `deck-list deck-chooser deck-chooser-${layout}`); box.append(list);
   const labels = new Map();
   for (const line of String(options.labels || '').split(/\r?\n/)) {
-    const separator = line.indexOf('=');
+    const spacedSeparator = line.lastIndexOf(' = ');
+    const separator = spacedSeparator >= 0 ? spacedSeparator + 1 : line.indexOf('=');
     if (separator < 0) continue;
     const name = line.slice(0, separator).trim(), label = line.slice(separator + 1).trim();
     if (name && label) labels.set(name, label);
