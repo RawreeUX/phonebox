@@ -115,10 +115,34 @@ public class BatteryTests
         Assert.Null(BatteryMonitor.ParseRazerPaReply(new byte[10], BatteryMonitor.RazerPaCmdBattery));
     }
 
+    [Fact]
+    public void BarracudaPaProtocol_UsesItsOwnOffsetsAndParsesRepliesWithOrWithoutReportId()
+    {
+        var remote = BatteryMonitor.BuildRazerBarracudaRemoteFrame(true);
+        Assert.Equal(BatteryMonitor.RazerBarracudaReportId, remote[0]);
+        Assert.Equal((byte)'P', remote[3]);
+        Assert.Equal((byte)'A', remote[4]);
+        Assert.Equal(0xE1, remote[8]);
+        Assert.Equal(1, remote[9]);
+
+        var query = BatteryMonitor.BuildRazerBarracudaQueryFrame(BatteryMonitor.RazerPaCmdBattery);
+        Assert.Equal(BatteryMonitor.RazerPaCmdBattery, query[8]);
+
+        var reply = new byte[BatteryMonitor.RazerPaReportLength];
+        reply[0] = BatteryMonitor.RazerBarracudaReportId;
+        reply[3] = (byte)'P'; reply[4] = (byte)'I';
+        reply[13] = BatteryMonitor.RazerPaCmdBattery;
+        reply[14] = 0x01; reply[15] = 0x01; reply[16] = 73;
+        Assert.Equal((byte)73, BatteryMonitor.ParseRazerBarracudaReply(reply, BatteryMonitor.RazerPaCmdBattery));
+        Assert.Equal((byte)73, BatteryMonitor.ParseRazerBarracudaReply(reply.AsSpan(1), BatteryMonitor.RazerPaCmdBattery));
+        Assert.Null(BatteryMonitor.ParseRazerBarracudaReply(reply, BatteryMonitor.RazerPaCmdCharging));
+    }
+
     [Theory]
     [InlineData(0x00AB, "mouse")]
     [InlineData(0x00C1, "mouse")]
     [InlineData(0x0555, "headphones")]
+    [InlineData(0x053A, "headphones")]
     [InlineData(0x025C, "keyboard")]
     [InlineData(0xFFFF, null)]
     public void RazerKindFromPid_MapsKnownDevicesAndFallsBackToName(int pid, string? expectedKind)
