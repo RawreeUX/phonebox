@@ -4,6 +4,13 @@ using Xunit;
 public class BatteryTests
 {
     [Theory]
+    [InlineData(false, 0, true)]
+    [InlineData(true, 0, false)]
+    [InlineData(true, 1, true)]
+    public void DisconnectedWindowsDevicesAreExcluded(bool hasProperty, byte value, bool expected)
+        => Assert.Equal(expected, BatteryMonitor.IncludeWindowsBatteryDevice(hasProperty, [value]));
+
+    [Theory]
     [InlineData("WH-1000XM5", "headphones")]
     [InlineData("Galaxy Buds2 Pro", "headphones")]
     [InlineData("AirPods Pro", "headphones")]
