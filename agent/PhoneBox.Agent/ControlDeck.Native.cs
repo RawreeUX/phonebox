@@ -90,7 +90,10 @@ internal sealed partial class WindowsDeckNative(MediaMonitor? mediaMonitor = nul
         {
             using var p = Process.GetProcessById(pid);
             var processName = p.ProcessName;
-            var key = (pid, p.StartTime.ToUniversalTime().Ticks);
+            // a service process may refuse its start time to an agent that isn't elevated: show its name, uncached
+            long started;
+            try { started = p.StartTime.ToUniversalTime().Ticks; } catch { return (processName, processName); }
+            var key = (pid, started);
             if (ProcessNames.TryGetValue(key, out var cached)) return cached;
 
             // Packaged desktop apps often expose a helper executable to Core Audio (for example DCv2.exe),
